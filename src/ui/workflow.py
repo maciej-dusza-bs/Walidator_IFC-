@@ -7,6 +7,7 @@ import streamlit as st
 from src.core.audit_context import AuditContext
 from src.core.audit_engine import run_feature
 from src.core.models import CheckStatus, WorkflowStep
+from src.features.f06_report.parameter_export import export_parameters_xlsx
 from src.features.f06_report.report_generator import generate_report_bytes
 from src.features.f02_ifc_validation.service import (
   apply_v28_acceptance,
@@ -20,6 +21,7 @@ from src.features.f04_ifc_classes.service import (
   run_class_verification,
   skip_f04,
 )
+from src.io_adapters.ifc_parameter_reader import list_model_ifc_classes
 from src.io_adapters.xlsx_reader import (
   IFC_CLASS_COLUMN,
   XLSX_FORMAT_HINT,
@@ -36,6 +38,9 @@ from src.ui.components import (
 )
 
 SESSION_CONTEXT_KEY = "audit_context"
+PARAMETER_EXPORT_ACTIVE_KEY = "parameter_export_active"
+PARAMETER_EXPORT_BYTES_KEY = "parameter_export_bytes"
+PARAMETER_EXPORT_FILENAME_KEY = "parameter_export_filename"
 
 
 def _init_session_state() -> AuditContext:
@@ -460,6 +465,75 @@ def _render_ifc_classes_step(context: AuditContext) -> None:
     st.info(context.f04_results[0].message if context.f04_results else "F-04 została pominięta.")
 
 
+def _render_parameter_export_section(context: AuditContext) -> None:
+  model = context.ifc_model
+  if model is None:
+    return
+
+  available_classes = list_model_ifc_classes(model)
+  st.markdown("#### Eksport parametrów")
+  st.write(
+    "Wybierz klasy IFC do eksportu. Uwzględniane są wyłącznie encje typu IfcElement "
+    "(bez komponentów dziedziczących po IfcFeatureElement, np. otworów). "
+    "Eksportowane kolumny: `Name`, `GlobalID`, `ObjectType`, `IfcClass`."
+  )
+
+  selected_classes = st.multiselect(
+    "Klasy IFC do eksportu",
+    options=available_classes,
+    default=[],
+    key="parameter_export_selected_classes",
+  )
+
+  if not selected_classes:
+    st.warning("Wybierz co najmniej jedną klasę IFC, aby wygenerować eksport.")
+
+  generate_col, cancel_col = st.columns(2)
+  if cancel_col.button("Anuluj eksport", use_container_width=True):
+    st.session_state.pop(PARAMETER_EXPORT_ACTIVE_KEY, None)
+    st.session_state.pop(PARAMETER_EXPORT_BYTES_KEY, None)
+    st.session_state.pop(PARAMETER_EXPORT_FILENAME_KEY, None)
+    st.session_state.pop("parameter_export_selected_classes", None)
+    st.rerun()
+
+  if generate_col.button(
+    "Generuj tabelę eksportu",
+    type="primary",
+    use_container_width=True,
+    disabled=not selected_classes,
+  ):
+    progress_bar = st.progress(0.0)
+    progress_caption = st.empty()
+
+    def _update_progress(current: int, total: int) -> None:
+      progress_value = current / total if total else 1.0
+      progress_bar.progress(progress_value)
+      progress_caption.caption(f"Tworzenie tabeli eksportu: {current}/{total} encji...")
+
+    export_bytes, export_filename = export_parameters_xlsx(
+      model,
+      context.ifc_filename,
+      selected_classes,
+      progress_callback=_update_progress,
+    )
+    progress_bar.progress(1.0)
+    progress_caption.caption("Tworzenie tabeli eksportu zakończone.")
+    st.session_state[PARAMETER_EXPORT_BYTES_KEY] = export_bytes
+    st.session_state[PARAMETER_EXPORT_FILENAME_KEY] = export_filename
+
+  export_bytes = st.session_state.get(PARAMETER_EXPORT_BYTES_KEY)
+  export_filename = st.session_state.get(PARAMETER_EXPORT_FILENAME_KEY)
+  if export_bytes and export_filename:
+    st.download_button(
+      label="Pobierz eksport parametrów XLSX",
+      data=export_bytes,
+      file_name=export_filename,
+      mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      use_container_width=True,
+    )
+    st.caption(f"Plik eksportu: `{export_filename}`")
+
+
 def _render_report_step(context: AuditContext) -> None:
   st.markdown("### Generowanie raportu kontroli")
   st.write(
@@ -475,8 +549,16 @@ def _render_report_step(context: AuditContext) -> None:
   if context.f04_skipped:
     st.info("Funkcjonalność F-04 została pominięta i zostanie oznaczona w raporcie jako SKIPPED.")
 
+  if context.ifc_model is None:
+    st.error(
+      "Brak otwartego modelu IFC. Wróć do kroku F-02 i poprawnie zwaliduj plik, aby wygenerować eksporty."
+    )
+    return
+
   report_bytes, report_filename = generate_report_bytes(context)
-  st.download_button(
+
+  download_col_report, download_col_parameters = st.columns(2)
+  download_col_report.download_button(
     label="Pobierz raport XLSX",
     data=report_bytes,
     file_name=report_filename,
@@ -484,7 +566,17 @@ def _render_report_step(context: AuditContext) -> None:
     type="primary",
     use_container_width=True,
   )
-  st.caption(f"Nazwa pliku raportu: `{report_filename}`")
+  if download_col_parameters.button("Eksport parametrów", use_container_width=True):
+    st.session_state[PARAMETER_EXPORT_ACTIVE_KEY] = True
+    st.session_state.pop(PARAMETER_EXPORT_BYTES_KEY, None)
+    st.session_state.pop(PARAMETER_EXPORT_FILENAME_KEY, None)
+    st.session_state.pop("parameter_export_selected_classes", None)
+    st.rerun()
+
+  st.caption(f"Raport: `{report_filename}`")
+
+  if st.session_state.get(PARAMETER_EXPORT_ACTIVE_KEY):
+    _render_parameter_export_section(context)
 
 
 def _render_step_content(context: AuditContext) -> None:
