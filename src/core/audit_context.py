@@ -22,6 +22,7 @@ class AuditContext:
   f02_results: list[CheckResult] = field(default_factory=list)
   v28_accepted: bool = False
   f02_completed: bool = False
+  f03_results: list[CheckResult] = field(default_factory=list)
   f03_completed: bool = False
   f04_completed: bool = False
   f04_skipped: bool = False

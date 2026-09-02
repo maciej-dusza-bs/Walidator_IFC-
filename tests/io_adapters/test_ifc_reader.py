@@ -40,3 +40,23 @@ def test_format_file_size() -> None:
   assert format_file_size(512) == "512 B"
   assert format_file_size(2048) == "2.00 KB"
   assert format_file_size(2 * 1024 * 1024) == "2.00 MB"
+
+
+def test_format_file_size_mb() -> None:
+  from src.io_adapters.ifc_reader import format_file_size_mb
+
+  assert format_file_size_mb(1024 * 1024) == "1.0000 MB"
+
+
+def test_get_entity_names_and_project_name(generated_ifc_fixtures: dict[str, Path]) -> None:
+  import ifcopenshell
+
+  from src.io_adapters.ifc_reader import count_model_entities, get_entity_names, get_ifc_project_name
+
+  metadata_path = generated_ifc_fixtures["with_metadata"]
+  model = ifcopenshell.open(str(metadata_path))
+
+  assert get_ifc_project_name(model) == "Test Project"
+  assert get_entity_names(model, "IfcBuilding") == ["Building A"]
+  assert get_entity_names(model, "IfcSite") == ["Site A"]
+  assert count_model_entities(model) > 0

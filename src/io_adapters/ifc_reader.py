@@ -64,3 +64,38 @@ def count_ifc_projects(model: Any) -> int:
 def get_model_schema(model: Any) -> str:
   """Zwraca nazwę schematu modelu."""
   return str(model.schema)
+
+
+def get_ifc_project_name(model: Any | None) -> str | None:
+  """Zwraca nazwę pierwszego IfcProject lub None."""
+  if model is None:
+    return None
+  projects = model.by_type("IfcProject")
+  if not projects:
+    return None
+  name = getattr(projects[0], "Name", None)
+  if name is None or str(name).strip() == "":
+    return None
+  return str(name)
+
+
+def get_entity_names(model: Any, entity_type: str) -> list[str]:
+  """Zwraca listę nazw encji danego typu."""
+  names: list[str] = []
+  for entity in model.by_type(entity_type):
+    name = getattr(entity, "Name", None)
+    if name is None or str(name).strip() == "":
+      continue
+    names.append(str(name))
+  return names
+
+
+def count_model_entities(model: Any) -> int:
+  """Zwraca łączną liczbę encji w modelu."""
+  return len(list(model))
+
+
+def format_file_size_mb(size_bytes: int) -> str:
+  """Formatuje rozmiar pliku w megabajtach."""
+  size_mb = size_bytes / (1024 * 1024)
+  return f"{size_mb:.4f} MB"

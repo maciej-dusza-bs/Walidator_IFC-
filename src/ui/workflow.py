@@ -11,9 +11,12 @@ from src.features.f02_ifc_validation.service import (
   apply_v28_acceptance,
   can_proceed_after_f02,
 )
+from src.features.f03_ifc_metadata.checks import F03_CHECK_IDS
+from src.features.f03_ifc_metadata.service import apply_user_evaluations, is_f03_complete
 from src.ui.components import (
   render_check_results_table,
   render_locked_step_message,
+  render_metadata_evaluation_form,
   render_progress_header,
   render_step_navigation,
 )
@@ -66,6 +69,15 @@ def _render_start_step(context: AuditContext) -> None:
     st.success("Instrukcja została potwierdzona. Możesz przejść do walidacji pliku IFC.")
 
 
+F03_RESULT_IDS = set(F03_CHECK_IDS)
+
+
+def _reset_f03_state(context: AuditContext) -> None:
+  context.f03_results = []
+  context.f03_completed = False
+  context.replace_feature_results(F03_RESULT_IDS, [])
+
+
 def _render_ifc_validation_step(context: AuditContext) -> None:
   st.markdown("Prześlij jeden plik IFC przeznaczony do kontroli.")
   uploaded_file = st.file_uploader(
@@ -99,10 +111,12 @@ def _render_ifc_validation_step(context: AuditContext) -> None:
     context.ifc_model = None
     context.ifc_temp_path = None
     context.replace_feature_results({f"V-2.{index}" for index in range(1, 9)}, [])
+    _reset_f03_state(context)
     _save_context(context)
     st.rerun()
 
   if validate_clicked:
+    _reset_f03_state(context)
     results = run_feature(context, "F-02", "Walidacja IFC").checks
     context.f02_results = results
     context.f02_completed = can_proceed_after_f02(results, context.v28_accepted)
@@ -138,6 +152,45 @@ def _render_ifc_validation_step(context: AuditContext) -> None:
       st.success("Walidacja zakończona pomyślnie. Możesz przejść do weryfikacji metadanych (F-03).")
 
 
+def _render_metadata_step(context: AuditContext) -> None:
+  if context.ifc_model is None:
+    st.error(
+      "Brak otwartego modelu IFC. Wróć do kroku F-02 i poprawnie zwaliduj plik, "
+      "aby kontynuować weryfikację metadanych."
+    )
+    return
+
+  if not context.f03_results:
+    context.f03_results = run_feature(context, "F-03", "Weryfikacja metadanych").checks
+    _save_context(context)
+
+  st.markdown(
+    "Zweryfikuj metadane pliku i modelu. Dla każdej pozycji wybierz **PASS** lub **FAIL**. "
+    "Komentarz jest opcjonalny."
+  )
+  render_check_results_table(context.f03_results)
+
+  submitted, evaluations, comments = render_metadata_evaluation_form(context.f03_results)
+
+  if submitted:
+    if len(evaluations) != len(context.f03_results):
+      st.error(
+        "Nie można przejść dalej, ponieważ nie wszystkie pozycje mają przypisaną ocenę. "
+        "Wybierz PASS lub FAIL dla każdej pozycji V-3.1–V-3.6."
+      )
+      return
+
+    updated_results = apply_user_evaluations(context.f03_results, evaluations, comments)
+    context.f03_results = updated_results
+    context.replace_feature_results(F03_RESULT_IDS, updated_results)
+    context.f03_completed = is_f03_complete(updated_results)
+    _save_context(context)
+    st.rerun()
+
+  if context.f03_completed:
+    st.success("Ocena metadanych została zapisana. Możesz przejść do weryfikacji klas IFC (F-04).")
+
+
 def _render_placeholder_step(feature_label: str) -> None:
   st.info(
     f"Funkcjonalność **{feature_label}** zostanie zaimplementowana w kolejnym etapie. "
@@ -159,7 +212,7 @@ def _render_step_content(context: AuditContext) -> None:
   if step == WorkflowStep.IFC_VALIDATION:
     _render_ifc_validation_step(context)
   elif step == WorkflowStep.METADATA:
-    _render_placeholder_step("F-03 — Metadane")
+    _render_metadata_step(context)
   elif step == WorkflowStep.IFC_CLASSES:
     _render_placeholder_step("F-04 — Klasy IFC")
   elif step == WorkflowStep.REPORT:

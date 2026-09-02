@@ -80,6 +80,53 @@ def render_check_results_table(results: list[CheckResult]) -> None:
   st.table(rows)
 
 
+def render_metadata_evaluation_form(
+  results: list[CheckResult],
+  form_key: str = "f03_evaluation_form",
+) -> tuple[bool, dict[str, CheckStatus], dict[str, str]]:
+  """Renderuje formularz oceny metadanych i zwraca decyzje użytkownika."""
+  evaluation_options = ["Wybierz ocenę", "PASS", "FAIL"]
+  evaluations: dict[str, CheckStatus] = {}
+  comments: dict[str, str] = {}
+
+  with st.form(form_key):
+    for result in results:
+      st.markdown(f"**{result.check_id} — {result.name}**")
+      st.write(result.message)
+
+      if result.status == CheckStatus.PASS:
+        default_index = 1
+      elif result.status == CheckStatus.FAIL:
+        default_index = 2
+      else:
+        default_index = 0
+
+      selected = st.radio(
+        "Ocena użytkownika",
+        options=evaluation_options,
+        index=default_index,
+        horizontal=True,
+        key=f"{form_key}_{result.check_id}_status",
+      )
+      comment = st.text_input(
+        "Komentarz (opcjonalnie)",
+        value=result.comment or "",
+        key=f"{form_key}_{result.check_id}_comment",
+      )
+
+      if selected == "PASS":
+        evaluations[result.check_id] = CheckStatus.PASS
+      elif selected == "FAIL":
+        evaluations[result.check_id] = CheckStatus.FAIL
+
+      comments[result.check_id] = comment
+      st.divider()
+
+    submitted = st.form_submit_button("Zatwierdź ocenę metadanych", use_container_width=True)
+
+  return submitted, evaluations, comments
+
+
 def render_locked_step_message(step: WorkflowStep) -> None:
   """Informuje użytkownika, że krok jest zablokowany."""
   st.warning(

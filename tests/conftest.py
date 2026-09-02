@@ -47,4 +47,17 @@ def generated_ifc_fixtures(tmp_path_factory: pytest.TempPathFactory) -> dict[str
     "multi_project": multi_path,
     "no_project": no_project_path,
     "ifc4": ifc4_path,
+    "with_metadata": _create_metadata_model(base_dir),
   }
+
+
+def _create_metadata_model(base_dir: Path) -> Path:
+  import ifcopenshell
+
+  model = ifcopenshell.file(schema="IFC2X3")
+  model.create_entity("IfcProject", Name="Test Project")
+  model.create_entity("IfcBuilding", Name="Building A")
+  model.create_entity("IfcSite", Name="Site A")
+  metadata_path = base_dir / "with_metadata.ifc"
+  model.write(str(metadata_path))
+  return metadata_path
