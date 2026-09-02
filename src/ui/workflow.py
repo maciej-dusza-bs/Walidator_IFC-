@@ -7,6 +7,7 @@ import streamlit as st
 from src.core.audit_context import AuditContext
 from src.core.audit_engine import run_feature
 from src.core.models import CheckStatus, WorkflowStep
+from src.features.f06_report.report_generator import generate_report_bytes
 from src.features.f02_ifc_validation.service import (
   apply_v28_acceptance,
   can_proceed_after_f02,
@@ -459,11 +460,31 @@ def _render_ifc_classes_step(context: AuditContext) -> None:
     st.info(context.f04_results[0].message if context.f04_results else "F-04 została pominięta.")
 
 
-def _render_placeholder_step(feature_label: str) -> None:
-  st.info(
-    f"Funkcjonalność **{feature_label}** zostanie zaimplementowana w kolejnym etapie. "
-    "Na tym etapie dostępna jest wyłącznie struktura workflow."
+def _render_report_step(context: AuditContext) -> None:
+  st.markdown("### Generowanie raportu kontroli")
+  st.write(
+    "Pobierz raport XLSX z podsumowaniem kontroli oraz wynikami funkcjonalności F-02, F-03 i F-04."
   )
+
+  from src.core.models import compute_overall_status
+
+  overall_status = compute_overall_status(context.all_results())
+  status_icon = "✅" if overall_status.value == "PASS" else "❌" if overall_status.value == "FAIL" else "⏭️"
+  st.markdown(f"**Status całej kontroli:** {status_icon} {overall_status.value}")
+
+  if context.f04_skipped:
+    st.info("Funkcjonalność F-04 została pominięta i zostanie oznaczona w raporcie jako SKIPPED.")
+
+  report_bytes, report_filename = generate_report_bytes(context)
+  st.download_button(
+    label="Pobierz raport XLSX",
+    data=report_bytes,
+    file_name=report_filename,
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    type="primary",
+    use_container_width=True,
+  )
+  st.caption(f"Nazwa pliku raportu: `{report_filename}`")
 
 
 def _render_step_content(context: AuditContext) -> None:
@@ -484,7 +505,7 @@ def _render_step_content(context: AuditContext) -> None:
   elif step == WorkflowStep.IFC_CLASSES:
     _render_ifc_classes_step(context)
   elif step == WorkflowStep.REPORT:
-    _render_placeholder_step("F-05 — Raport")
+    _render_report_step(context)
 
 
 def render_app() -> None:
