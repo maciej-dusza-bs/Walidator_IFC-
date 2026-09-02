@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.core.models import TOTAL_WORKFLOW_STEPS, CheckStatus, WorkflowStep, WORKFLOW_STEP_LABELS
+from src.core.models import TOTAL_WORKFLOW_STEPS, CheckResult, CheckStatus, WorkflowStep, WORKFLOW_STEP_LABELS
 
 STATUS_ICONS: dict[CheckStatus, str] = {
   CheckStatus.PASS: "✅",
@@ -58,6 +58,26 @@ def render_step_navigation(
   go_back = col_back.button("← Wstecz", disabled=not can_go_back, use_container_width=True)
   go_forward = col_forward.button("Dalej →", disabled=not can_go_forward, use_container_width=True)
   return go_back, go_forward
+
+
+def render_check_results_table(results: list[CheckResult]) -> None:
+  """Wyświetla tabelę wyników sprawdzeń."""
+  if not results:
+    return
+
+  rows = []
+  for result in results:
+    icon = STATUS_ICONS[result.status]
+    label = STATUS_LABELS[result.status]
+    rows.append(
+      {
+        "ID": result.check_id,
+        "Sprawdzenie": result.name,
+        "Status": f"{icon} {label}",
+        "Komunikat": result.message,
+      }
+    )
+  st.table(rows)
 
 
 def render_locked_step_message(step: WorkflowStep) -> None:

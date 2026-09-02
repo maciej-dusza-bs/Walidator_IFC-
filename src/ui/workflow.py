@@ -5,8 +5,14 @@ from __future__ import annotations
 import streamlit as st
 
 from src.core.audit_context import AuditContext
-from src.core.models import WorkflowStep
+from src.core.audit_engine import run_feature
+from src.core.models import CheckStatus, WorkflowStep
+from src.features.f02_ifc_validation.service import (
+  apply_v28_acceptance,
+  can_proceed_after_f02,
+)
 from src.ui.components import (
+  render_check_results_table,
   render_locked_step_message,
   render_progress_header,
   render_step_navigation,
@@ -21,9 +27,13 @@ def _init_session_state() -> AuditContext:
   return st.session_state[SESSION_CONTEXT_KEY]
 
 
+def _save_context(context: AuditContext) -> None:
+  st.session_state[SESSION_CONTEXT_KEY] = context
+
+
 def _set_current_step(context: AuditContext, step: WorkflowStep) -> None:
   context.current_step = step
-  st.session_state[SESSION_CONTEXT_KEY] = context
+  _save_context(context)
 
 
 def _render_start_step(context: AuditContext) -> None:
@@ -50,10 +60,82 @@ def _render_start_step(context: AuditContext) -> None:
     if st.button("Rozpocznij kontrolę", type="primary", use_container_width=True):
       context.step1_acknowledged = True
       context.current_step = WorkflowStep.IFC_VALIDATION
-      st.session_state[SESSION_CONTEXT_KEY] = context
+      _save_context(context)
       st.rerun()
   else:
     st.success("Instrukcja została potwierdzona. Możesz przejść do walidacji pliku IFC.")
+
+
+def _render_ifc_validation_step(context: AuditContext) -> None:
+  st.markdown("Prześlij jeden plik IFC przeznaczony do kontroli.")
+  uploaded_file = st.file_uploader(
+    "Plik IFC",
+    type=["ifc"],
+    key="ifc_file_uploader",
+    help="Dozwolony rozmiar: od 10 B do 50 MB.",
+  )
+
+  if uploaded_file is not None:
+    context.ifc_filename = uploaded_file.name
+    context.ifc_file_bytes = uploaded_file.getvalue()
+    context.v28_accepted = False
+    _save_context(context)
+
+  col_validate, col_reset = st.columns(2)
+  validate_clicked = col_validate.button(
+    "Waliduj plik IFC",
+    type="primary",
+    use_container_width=True,
+    disabled=context.ifc_file_bytes is None,
+  )
+  reset_clicked = col_reset.button("Wyczyść wyniki", use_container_width=True)
+
+  if reset_clicked:
+    context.f02_results = []
+    context.f02_completed = False
+    context.v28_accepted = False
+    context.ifc_filename = None
+    context.ifc_file_bytes = None
+    context.ifc_model = None
+    context.ifc_temp_path = None
+    context.replace_feature_results({f"V-2.{index}" for index in range(1, 9)}, [])
+    _save_context(context)
+    st.rerun()
+
+  if validate_clicked:
+    results = run_feature(context, "F-02", "Walidacja IFC").checks
+    context.f02_results = results
+    context.f02_completed = can_proceed_after_f02(results, context.v28_accepted)
+    _save_context(context)
+    st.rerun()
+
+  if context.f02_results:
+    st.markdown("### Podsumowanie walidacji")
+    render_check_results_table(context.f02_results)
+
+    blocking_failed = any(
+      result.status == CheckStatus.FAIL and result.check_id in {f"V-2.{index}" for index in range(1, 8)}
+      for result in context.f02_results
+    )
+    if blocking_failed:
+      st.error(
+        "Walidacja nie powiodła się. Co najmniej jedno sprawdzenie V-2.1–V-2.7 zakończyło się statusem FAIL. "
+        "Popraw plik lub wybierz inny model, a następnie uruchom walidację ponownie."
+      )
+
+    v28_result = next((result for result in context.f02_results if result.check_id == "V-2.8"), None)
+    if v28_result and v28_result.status == CheckStatus.WARNING and not context.v28_accepted:
+      st.warning(v28_result.message)
+      if st.button("Akceptuję ostrzeżenie i chcę kontynuować", use_container_width=True):
+        context.v28_accepted = True
+        context.f02_results = apply_v28_acceptance(context.f02_results)
+        context.replace_feature_results({f"V-2.{index}" for index in range(1, 9)}, context.f02_results)
+        context.f02_completed = can_proceed_after_f02(context.f02_results, context.v28_accepted)
+        _save_context(context)
+        st.rerun()
+
+    if context.f02_completed:
+      st.success("Walidacja zakończona pomyślnie. Możesz przejść do weryfikacji metadanych (F-03).")
 
 
 def _render_placeholder_step(feature_label: str) -> None:
@@ -75,7 +157,7 @@ def _render_step_content(context: AuditContext) -> None:
     return
 
   if step == WorkflowStep.IFC_VALIDATION:
-    _render_placeholder_step("F-02 — Walidacja IFC")
+    _render_ifc_validation_step(context)
   elif step == WorkflowStep.METADATA:
     _render_placeholder_step("F-03 — Metadane")
   elif step == WorkflowStep.IFC_CLASSES:

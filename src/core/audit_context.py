@@ -14,10 +14,13 @@ class AuditContext:
 
   ifc_filename: str | None = None
   ifc_file_bytes: bytes | None = None
+  ifc_temp_path: str | None = None
   ifc_model: Any | None = None
   check_results: list[CheckResult] = field(default_factory=list)
   current_step: WorkflowStep = WorkflowStep.START
   step1_acknowledged: bool = False
+  f02_results: list[CheckResult] = field(default_factory=list)
+  v28_accepted: bool = False
   f02_completed: bool = False
   f03_completed: bool = False
   f04_completed: bool = False
@@ -27,6 +30,10 @@ class AuditContext:
     return list(self.check_results)
 
   def add_results(self, results: list[CheckResult]) -> None:
+    self.check_results.extend(results)
+
+  def replace_feature_results(self, check_ids: set[str], results: list[CheckResult]) -> None:
+    self.check_results = [result for result in self.check_results if result.check_id not in check_ids]
     self.check_results.extend(results)
 
   def is_step_unlocked(self, step: WorkflowStep) -> bool:
