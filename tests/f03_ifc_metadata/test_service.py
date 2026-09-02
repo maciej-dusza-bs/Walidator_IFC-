@@ -14,20 +14,46 @@ from src.features.f03_ifc_metadata.service import (
 )
 
 
-def test_is_f03_complete_requires_all_evaluations() -> None:
+def test_is_f03_complete_requires_evaluable_items_only() -> None:
   results = [
     CheckResult("V-3.1", "Nazwa pliku", CheckStatus.PASS, "model.ifc"),
     CheckResult("V-3.2", "IfcProject.Name", CheckStatus.SKIPPED, "Projekt"),
+    CheckResult("V-3.6", "Łączna liczba encji", CheckStatus.PASS, "100"),
   ]
 
   assert is_f03_complete(results) is False
 
 
+def test_is_f03_complete_when_evaluable_items_have_pass_or_fail() -> None:
+  results = [
+    CheckResult(f"V-3.{index}", f"Pozycja {index}", CheckStatus.PASS, "OK")
+    for index in range(1, 6)
+  ]
+  results.append(CheckResult("V-3.6", "Łączna liczba encji", CheckStatus.PASS, "100"))
+
+  assert is_f03_complete(results) is True
+
+
+def test_merge_user_evaluations_defaults_to_pass() -> None:
+  from src.features.f03_ifc_metadata.service import merge_user_evaluations
+
+  extracted = [
+    CheckResult("V-3.1", "Nazwa pliku", CheckStatus.SKIPPED, "model.ifc"),
+    CheckResult("V-3.6", "Łączna liczba encji", CheckStatus.SKIPPED, "10"),
+  ]
+
+  merged = merge_user_evaluations(extracted, [])
+
+  assert merged[0].status == CheckStatus.PASS
+  assert merged[1].status == CheckStatus.PASS
+
+
 def test_is_f03_complete_when_all_pass_or_fail() -> None:
   results = [
     CheckResult(f"V-3.{index}", f"Pozycja {index}", CheckStatus.PASS, "OK")
-    for index in range(1, 7)
+    for index in range(1, 6)
   ]
+  results.append(CheckResult("V-3.6", "Łączna liczba encji", CheckStatus.PASS, "100"))
 
   assert is_f03_complete(results) is True
 

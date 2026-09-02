@@ -24,8 +24,21 @@ class AuditContext:
   f02_completed: bool = False
   f03_results: list[CheckResult] = field(default_factory=list)
   f03_completed: bool = False
+  f04_xlsx_filename: str | None = None
+  f04_xlsx_bytes: bytes | None = None
+  f04_sheet_names: list[str] = field(default_factory=list)
+  f04_selected_sheet: str | None = None
+  f04_sheet_columns: list[str] = field(default_factory=list)
+  f04_selected_column: str | None = None
+  f04_allowed_classes: list[str] = field(default_factory=list)
+  f04_results: list[CheckResult] = field(default_factory=list)
+  f04_class_rows: list[Any] = field(default_factory=list)
   f04_completed: bool = False
   f04_skipped: bool = False
+  f04_has_failures: bool = False
+  f04_xlsx_error: str | None = None
+  f04_xlsx_format_hint: str | None = None
+  f04_load_success: str | None = None
 
   def all_results(self) -> list[CheckResult]:
     return list(self.check_results)

@@ -48,6 +48,83 @@ def generated_ifc_fixtures(tmp_path_factory: pytest.TempPathFactory) -> dict[str
     "no_project": no_project_path,
     "ifc4": ifc4_path,
     "with_metadata": _create_metadata_model(base_dir),
+    "with_products": _create_products_model(base_dir),
+  }
+
+
+def _create_products_model(base_dir: Path) -> Path:
+  import ifcopenshell
+
+  model = ifcopenshell.file(schema="IFC2X3")
+  model.create_entity("IfcProject", Name="Test Project")
+  model.create_entity("IfcWall")
+  model.create_entity("IfcDoor")
+  products_path = base_dir / "with_products.ifc"
+  model.write(str(products_path))
+  return products_path
+
+
+@pytest.fixture(scope="session")
+def generated_xlsx_fixtures(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Path]:
+  """Generuje pliki XLSX do testów F-04."""
+  import pandas as pd
+
+  base_dir = tmp_path_factory.mktemp("xlsx_generated")
+
+  valid_path = base_dir / "classes_valid.xlsx"
+  pd.DataFrame({"IfcClass": ["IfcWall", "IfcDoor", " IfcWall ", ""]}).to_excel(
+    valid_path,
+    sheet_name="Klasy",
+    index=False,
+  )
+
+  multi_sheet_path = base_dir / "classes_multi_sheet.xlsx"
+  with pd.ExcelWriter(multi_sheet_path, engine="openpyxl") as writer:
+    pd.DataFrame({"Other": ["x"]}).to_excel(writer, sheet_name="Inny", index=False)
+    pd.DataFrame({"IfcClass": ["IfcWall"]}).to_excel(writer, sheet_name="Klasy", index=False)
+
+  missing_column_path = base_dir / "classes_missing_column.xlsx"
+  pd.DataFrame(
+    {
+      "Opis": ["ściana"],
+      "ClassName": ["IfcWall"],
+    }
+  ).to_excel(missing_column_path, sheet_name="Klasy", index=False)
+
+  empty_path = base_dir / "classes_empty.xlsx"
+  pd.DataFrame({"IfcClass": ["", "   "]}).to_excel(
+    empty_path,
+    sheet_name="Klasy",
+    index=False,
+  )
+
+  multi_column_path = base_dir / "classes_multi_column.xlsx"
+  pd.DataFrame(
+    {
+      "Opis": ["ściana", "drzwi"],
+      "IfcClass": ["IfcWall", "IfcDoor"],
+      "Kod": ["W1", "D1"],
+    }
+  ).to_excel(multi_column_path, sheet_name="Klasy", index=False)
+
+  offset_header_path = base_dir / "classes_offset_header.xlsx"
+  offset_rows = [
+    [None, None, None, None],
+    [None, None, None, None],
+    [None, "MODEL BRANŻY", None, None],
+    [None, "Komponent", "IfcType", "IfcClass"],
+    [None, "Płyta", "KO_Płyta", "IfcFooting"],
+    [None, "Ściana", "KO_Ściana", "IfcWall / IfcWallStandardCase"],
+  ]
+  pd.DataFrame(offset_rows).to_excel(offset_header_path, sheet_name="Arkusz1", header=False, index=False)
+
+  return {
+    "valid": valid_path,
+    "multi_sheet": multi_sheet_path,
+    "missing_column": missing_column_path,
+    "empty": empty_path,
+    "multi_column": multi_column_path,
+    "offset_header": offset_header_path,
   }
 
 

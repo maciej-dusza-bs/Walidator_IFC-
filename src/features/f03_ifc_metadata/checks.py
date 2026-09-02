@@ -13,6 +13,8 @@ from src.io_adapters.ifc_reader import (
 )
 
 F03_CHECK_IDS = tuple(f"V-3.{index}" for index in range(1, 7))
+F03_EVALUABLE_CHECK_IDS = frozenset(f"V-3.{index}" for index in range(1, 6))
+F03_INFORMATIONAL_CHECK_IDS = frozenset({"V-3.6"})
 PENDING_USER_REVIEW = CheckStatus.SKIPPED
 
 

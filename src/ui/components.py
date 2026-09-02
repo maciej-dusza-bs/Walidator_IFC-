@@ -80,51 +80,82 @@ def render_check_results_table(results: list[CheckResult]) -> None:
   st.table(rows)
 
 
-def render_metadata_evaluation_form(
+def render_metadata_evaluation_table(
   results: list[CheckResult],
   form_key: str = "f03_evaluation_form",
 ) -> tuple[bool, dict[str, CheckStatus], dict[str, str]]:
-  """Renderuje formularz oceny metadanych i zwraca decyzje użytkownika."""
-  evaluation_options = ["Wybierz ocenę", "PASS", "FAIL"]
+  """Renderuje tabelę metadanych z oceną PASS/FAIL i komentarzem w jednym widoku."""
+  from src.features.f03_ifc_metadata.checks import F03_INFORMATIONAL_CHECK_IDS
+
   evaluations: dict[str, CheckStatus] = {}
   comments: dict[str, str] = {}
 
   with st.form(form_key):
+    header_cols = st.columns([0.7, 1.6, 2.2, 1.0, 1.7])
+    header_cols[0].markdown("**ID**")
+    header_cols[1].markdown("**Dane**")
+    header_cols[2].markdown("**Wartość**")
+    header_cols[3].markdown("**Ocena**")
+    header_cols[4].markdown("**Komentarz**")
+
     for result in results:
-      st.markdown(f"**{result.check_id} — {result.name}**")
-      st.write(result.message)
+      row_cols = st.columns([0.7, 1.6, 2.2, 1.0, 1.7])
+      row_cols[0].write(result.check_id)
+      row_cols[1].write(result.name)
+      row_cols[2].write(result.message)
 
-      if result.status == CheckStatus.PASS:
-        default_index = 1
-      elif result.status == CheckStatus.FAIL:
-        default_index = 2
-      else:
-        default_index = 0
+      if result.check_id in F03_INFORMATIONAL_CHECK_IDS:
+        row_cols[3].write("Informacja")
+        row_cols[4].write("—")
+        continue
 
-      selected = st.radio(
-        "Ocena użytkownika",
-        options=evaluation_options,
-        index=default_index,
-        horizontal=True,
+      current_status = result.status if result.status in (CheckStatus.PASS, CheckStatus.FAIL) else CheckStatus.PASS
+      selected = row_cols[3].selectbox(
+        "Ocena",
+        options=["PASS", "FAIL"],
+        index=0 if current_status == CheckStatus.PASS else 1,
+        label_visibility="collapsed",
         key=f"{form_key}_{result.check_id}_status",
       )
-      comment = st.text_input(
-        "Komentarz (opcjonalnie)",
+      comment = row_cols[4].text_input(
+        "Komentarz",
         value=result.comment or "",
+        label_visibility="collapsed",
         key=f"{form_key}_{result.check_id}_comment",
       )
 
-      if selected == "PASS":
-        evaluations[result.check_id] = CheckStatus.PASS
-      elif selected == "FAIL":
-        evaluations[result.check_id] = CheckStatus.FAIL
-
+      evaluations[result.check_id] = CheckStatus.PASS if selected == "PASS" else CheckStatus.FAIL
       comments[result.check_id] = comment
-      st.divider()
 
     submitted = st.form_submit_button("Zatwierdź ocenę metadanych", use_container_width=True)
 
   return submitted, evaluations, comments
+
+
+def render_metadata_evaluation_form(
+  results: list[CheckResult],
+  form_key: str = "f03_evaluation_form",
+) -> tuple[bool, dict[str, CheckStatus], dict[str, str]]:
+  """Kompatybilność wsteczna — przekierowuje do tabeli metadanych."""
+  return render_metadata_evaluation_table(results, form_key)
+
+
+def render_class_verification_table(rows: list[object]) -> None:
+  """Wyświetla tabelę wynikową F-04."""
+  if not rows:
+    return
+
+  table_rows = []
+  for row in rows:
+    allowed_label = "Tak" if row.is_allowed else "Nie"
+    table_rows.append(
+      {
+        "Klasa IFC": row.class_name,
+        "Liczba wystąpień": row.occurrence_count,
+        "Czy klasa dopuszczalna": allowed_label,
+      }
+    )
+  st.table(table_rows)
 
 
 def render_locked_step_message(step: WorkflowStep) -> None:

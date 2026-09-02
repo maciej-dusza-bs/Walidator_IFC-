@@ -4,17 +4,31 @@ from __future__ import annotations
 
 from src.core.audit_context import AuditContext
 from src.core.models import CheckResult, CheckStatus
-from src.features.f03_ifc_metadata.checks import F03_CHECK_IDS, extract_metadata
+from src.features.f03_ifc_metadata.checks import (
+  F03_CHECK_IDS,
+  F03_EVALUABLE_CHECK_IDS,
+  F03_INFORMATIONAL_CHECK_IDS,
+  extract_metadata,
+)
 
 F03_RESULT_IDS = set(F03_CHECK_IDS)
 USER_EVALUATION_STATUSES = {CheckStatus.PASS, CheckStatus.FAIL}
 
 
 def is_f03_complete(results: list[CheckResult]) -> bool:
-  """Sprawdza, czy użytkownik ocenił wszystkie pozycje metadanych."""
-  if len(results) != len(F03_CHECK_IDS):
-    return False
-  return all(result.status in USER_EVALUATION_STATUSES for result in results)
+  """Sprawdza, czy użytkownik ocenił wszystkie wymagane pozycje metadanych."""
+  results_by_id = {result.check_id: result for result in results}
+  for check_id in F03_EVALUABLE_CHECK_IDS:
+    result = results_by_id.get(check_id)
+    if result is None or result.status not in USER_EVALUATION_STATUSES:
+      return False
+  return True
+
+
+def _default_metadata_status(check_id: str) -> CheckStatus:
+  if check_id in F03_INFORMATIONAL_CHECK_IDS:
+    return CheckStatus.PASS
+  return CheckStatus.PASS
 
 
 def merge_user_evaluations(
@@ -28,18 +42,22 @@ def merge_user_evaluations(
   for extracted in extracted_results:
     previous = previous_by_id.get(extracted.check_id)
     if previous and previous.status in USER_EVALUATION_STATUSES:
-      merged_results.append(
-        CheckResult(
-          check_id=extracted.check_id,
-          name=extracted.name,
-          status=previous.status,
-          message=extracted.message,
-          value=extracted.value,
-          comment=previous.comment,
-        )
-      )
+      status = previous.status
+      comment = previous.comment
     else:
-      merged_results.append(extracted)
+      status = _default_metadata_status(extracted.check_id)
+      comment = None
+
+    merged_results.append(
+      CheckResult(
+        check_id=extracted.check_id,
+        name=extracted.name,
+        status=status,
+        message=extracted.message,
+        value=extracted.value,
+        comment=comment,
+      )
+    )
 
   return merged_results
 
@@ -52,10 +70,22 @@ def apply_user_evaluations(
   """Aktualizuje wyniki metadanych o oceny użytkownika."""
   updated_results: list[CheckResult] = []
   for result in current_results:
-    selected_status = evaluations.get(result.check_id)
-    if selected_status not in USER_EVALUATION_STATUSES:
-      updated_results.append(result)
+    if result.check_id in F03_INFORMATIONAL_CHECK_IDS:
+      updated_results.append(
+        CheckResult(
+          check_id=result.check_id,
+          name=result.name,
+          status=CheckStatus.PASS,
+          message=result.message,
+          value=result.value,
+          comment=None,
+        )
+      )
       continue
+
+    selected_status = evaluations.get(result.check_id, CheckStatus.PASS)
+    if selected_status not in USER_EVALUATION_STATUSES:
+      selected_status = CheckStatus.PASS
 
     comment = comments.get(result.check_id, "").strip() or None
     updated_results.append(
@@ -81,5 +111,4 @@ def run_f03_metadata(context: AuditContext) -> list[CheckResult]:
   results = merge_user_evaluations(extracted, context.f03_results)
   context.replace_feature_results(F03_RESULT_IDS, results)
   context.f03_results = results
-  context.f03_completed = is_f03_complete(results)
   return results
