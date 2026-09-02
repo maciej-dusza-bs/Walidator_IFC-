@@ -1,0 +1,1 @@
+"""Wspólne komponenty interfejsu użytkownika."""
